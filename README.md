@@ -43,4 +43,14 @@ make clear
 
 ## técnicas de distribuição dos dados (_urban CA_)
 * São estudadas técnicas de qual é a melhor forma de distribuir a matriz (CA) entre as threads.
-* (continua...)
+
+
+* Existem duas técnicas principais de distribuição: (1) divisão por áreas iguais; (2) divisão por cargas de trabalho (_workloads_) iguais;
+
+* Para cada técnica principal, existem três sub-tipos (sub-divisões) de decomposição: (a) divisão por _n_ dobras horizontais (_rowwise decomposition_); (b) divisão por _n_ dobras verticais (_columnwise decomposition_); (c) divisão por _n_ subregiões retangulares (_chessboard decomposition_); A terceira opção é mais complicada de implementar do que as outras duas, mas também é a que podemos esperar que possua a maior eficiência na computação paralela para as matrizes (_CA_) heterogêneas.
+ 
+
+### Divisão por áreas iguais
+* Cada thread paralela _p_ ficará responsável por uma área formada de _m_ colunas vs n linhas. 
+* O MPI é utilizado para atualizar as células da borda (_ghost cells_). Para as duas primeiras sub-divisões (_rowwise decomposition_ e _columnwise decomposition_) a atualização das bordas de uma área (_thread_) é feita em dois passos. Para a atualização das bordas _chessboard decomposition_, é utilizado o _shift algorithm_ [Palmer and Nieplocha
+2002]
