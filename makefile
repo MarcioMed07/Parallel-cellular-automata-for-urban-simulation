@@ -6,7 +6,7 @@ install:
 #build an execultable named main in folder build/ from main.c in folder src/
 build:
 	mkdir -p .build;\
-	gcc src/main.c -o .build/main -fopenmp;
+	gcc src/main.c  -g -o  .build/main -fopenmp;
 
 #cleans build folder
 clear:
@@ -15,3 +15,6 @@ clear:
 #runs main executable in folder build/
 run:
 	./.build/main
+
+debug:
+	gdb ./.build/main
