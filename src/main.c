@@ -32,9 +32,12 @@ void print_automata(Automata*);
 // void simulate_automata(Automata*, size_t);
 void simulate_automata(Automata*, Automata*, double);
 double calculate_prob(Cell cell);
+int* divide_automato(Automata*, int, int*, double, double);
+void free_automata(Automata*);
+void printVetor(char*,int*,int);
 int main(void){
     srand(time(NULL));
-    int ordem = 3;
+    int ordem = 10;
     int x = ordem, y = ordem;
     int iteracoes = 10;
     double trashold = 0.11;
@@ -42,8 +45,22 @@ int main(void){
     Automata* automataAux = allocate(x, y);
     copy_automata(automataAux, automata); // A = B
 
+    const int qtdThreads = 3;
+    int* indices = (int*)malloc((qtdThreads-1)*sizeof(int));
+
+    indices = divide_automato(automata, qtdThreads, indices, 0.2, 0.4);
+    printVetor("indices", indices, qtdThreads-1);
+    // printf("indices = ");
+    // for (size_t i = 0; i < qtdThreads-1; i++)
+    // {
+    //     printf("%d ", indices[i]);
+    // }
+    // printf("\n");
+
     puts("===Before===");
     print_automata(automata);
+
+
 
     for (size_t i = 0; i < iteracoes; i++)
     {
@@ -66,7 +83,56 @@ int main(void){
     //     #pragma omp single
     //     printf("Hi, I'm thread %d,\nThread %d discoverd that there are %d threads\n",th_id, flag, nthreads);
     // }
+
+    free_automata(automata);
+    free_automata(automataAux);
     return 0;
+}
+
+/**
+ * exemplo:
+ * Se a qtd for 2, deve-se retornar um indice k, thrad_1 => [0, k), thread_2 => [k, ordem); 
+ * se qtd = 3, retornará dois indices: k1 e k2, thread_1 => [0, k1), thread_2 => [k1, k2), thread_3 => [k2, ordem)
+ * ...
+ * qtd = n, retorna (n-1) indices: k_1, ... K_(n-1), thread_1 => [0, k_1), ..., thread_a => [k_(a-1), k_a), ..., thread_(n-1) => [k_(n-2), ordem)
+ **/
+int* divide_automato(Automata* automato, int qtd, int* indices, double time_uv, double time_av) {
+    const int ordem = automato->width; // O AUTOMATO PRECISA SER QUADRADO
+    double sum = 0.0;
+    double* linhas = (double*)malloc(ordem*sizeof(double)); // quardar a soma de cada linha do automato
+    for (size_t i = 0; i < ordem; i++)
+    {
+        int count_uv = 0, count_av = 0; // quantidade de celulas unVaieble e avaieble
+        for (size_t j = 0; j < ordem; j++)
+        {
+            if (automato->cells[i*ordem + j].isUnavailable) {
+                count_uv++;
+            } else {
+                count_av++;
+            }
+        }
+        linhas[i] = count_uv*time_uv + count_av*time_av;
+    }
+    
+    for (size_t i = 0; i < ordem; i++)
+    {
+        sum += linhas[i];
+    }
+
+    int workForLine = sum / qtd; // A conta será truncada.
+    for (size_t ind = 0, i = 0; ind < qtd-1; ind++)
+    {
+        double sumLine = 0.0;
+        while (i < ordem && sumLine <= workForLine)
+        {
+            sumLine += linhas[i];
+            i++;
+        }
+
+        indices[ind] = i; // a thread ind só irá até o indice i
+    }
+    free(linhas);
+    return indices;
 }
 
 
@@ -77,9 +143,9 @@ Cell* create_random_matrix(int width, int height){
     {
         for (size_t j = 0; j < height; j++)
         {
-            matriz[i*width + j].isUrban = ((double) rand() / (double) RAND_MAX) < 0.20 ? 1 : 0; // 20% de chance da celula ja ser urbanizada
+            matriz[i*width + j].isUrban = ((double) rand() / (double) RAND_MAX) < 0.05 ? 1 : 0; // 5% de chance da celula já ser urbanizada
             matriz[i*width + j].qtdGis = QTD_GIS;
-            matriz[i*width + j].isUnavailable = rand() % 2; // 0 ou 1
+            matriz[i*width + j].isUnavailable = ((double) rand() / (double) RAND_MAX) < 0.20 ? 1 : 0; // 20% de chance da celula ser imutável
             matriz[i*width + j].probTransicao = (double) rand() / (double) RAND_MAX; // entre 0 e 1
             matriz[i*width + j].pos_i = i;
             matriz[i*width + j].pos_j = j;
@@ -97,6 +163,11 @@ Cell* create_random_matrix(int width, int height){
 Automata* allocate(int width, int height) {
     Automata* automata = malloc(sizeof(Automata));
     automata->cells = malloc(width*height*sizeof(Cell));
+}
+
+void free_automata(Automata* automato) {
+    free(automato->cells);
+    free(automato);
 }
 
 Automata* create_automata(int width, int height){
@@ -203,4 +274,13 @@ void print_automata(Automata* automata){
             printf("]\n");
         }
     }
+}
+
+void printVetor(char* str,int* vetor, int size) {
+    printf("%s = ", str);
+    for (size_t i = 0; i < size; i++)
+    {
+        printf("%d ", vetor[i]);
+    }
+    printf("\n");
 }
