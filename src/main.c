@@ -30,42 +30,44 @@ Automata* allocate(int, int);
 int* list_of_neighbors(Automata*, int, int, int, int*);
 void print_automata(Automata*);
 // void simulate_automata(Automata*, size_t);
-void simulate_automata(Automata*, Automata*, double);
+void simulate_automata(Automata*, Automata*, double, int, int*);
 double calculate_prob(Cell cell);
 int* divide_automato(Automata*, int, int*, double, double);
 void free_automata(Automata*);
 void printVetor(char*,int*,int);
+int linha_inicial(int, int*);
+int linha_final(int, int*);
 int main(void){
     srand(time(NULL));
     int ordem = 10;
     int x = ordem, y = ordem;
     int iteracoes = 10;
-    double trashold = 0.11;
+    double trashold = 0.30;
     Automata* automata = create_automata(x,y);
     Automata* automataAux = allocate(x, y);
     copy_automata(automataAux, automata); // A = B
 
     const int qtdThreads = 3;
-    int* indices = (int*)malloc((qtdThreads-1)*sizeof(int));
+    int* indices = (int*)malloc((qtdThreads)*sizeof(int));
 
-    indices = divide_automato(automata, qtdThreads, indices, 0.2, 0.4);
-    printVetor("indices", indices, qtdThreads-1);
-    // printf("indices = ");
-    // for (size_t i = 0; i < qtdThreads-1; i++)
-    // {
-    //     printf("%d ", indices[i]);
-    // }
-    // printf("\n");
+    indices = divide_automato(automata, qtdThreads, indices, 0.2, 0.8);
+    printVetor("indices", indices, qtdThreads);
 
     puts("===Before===");
     print_automata(automata);
 
-
-
-    for (size_t i = 0; i < iteracoes; i++)
+    #pragma omp parallel num_threads(qtdThreads)
     {
-        simulate_automata(automata, automataAux, trashold);
-        copy_automata(automataAux, automata);
+        for (size_t i = 0; i < iteracoes; i++)
+        {
+            #pragma omp barrier
+            simulate_automata(automata, automataAux, trashold, omp_get_thread_num(), indices);
+
+            #pragma omp single
+            copy_automata(automataAux, automata);
+
+            #pragma omp barrier
+        }
     }
     puts("===After===");
     print_automata(automata);
@@ -120,7 +122,7 @@ int* divide_automato(Automata* automato, int qtd, int* indices, double time_uv, 
     }
 
     int workForLine = sum / qtd; // A conta será truncada.
-    for (size_t ind = 0, i = 0; ind < qtd-1; ind++)
+    for (size_t ind = 0, i = 0; ind < qtd; ind++)
     {
         double sumLine = 0.0;
         while (i < ordem && sumLine <= workForLine)
@@ -239,11 +241,14 @@ double calculate_prob(Cell cell) {
 //     }
 // }
 
-void simulate_automata(Automata* automataAux, Automata* automata, double trashold){
-    int width = automata->width;
+void simulate_automata(Automata* automataAux, Automata* automata, double trashold, int thId, int* indices){
+    // int width = automata->width;
     int height = automata->height;
 
-    for(int i = 0; i < width; i++){
+    printf("----------------------------------------\n");
+    printf("thread %d fará de %d até %d\n", thId, linha_inicial(thId, indices), linha_final(thId, indices));
+
+    for(int i = linha_inicial(thId, indices); i < linha_final(thId, indices); i++){
         for(int j = 0; j < height; j++){
             automataAux->cells[i*automataAux->width + j].probTransicao = calculate_prob(automata->cells[i*automata->width + j]); //calculate_cell(automata->cells[i*automata->width + j]);
             
@@ -283,4 +288,16 @@ void printVetor(char* str,int* vetor, int size) {
         printf("%d ", vetor[i]);
     }
     printf("\n");
+}
+
+int linha_inicial(int thId, int* indices) {
+    int ant = thId -1;
+    if (ant < 0) {
+        return 0; // caso especial: primeira thread, primeira linha
+    }
+    return indices[ant];
+}
+
+int linha_final(int thId, int* indices) {
+    return indices[thId];
 }
