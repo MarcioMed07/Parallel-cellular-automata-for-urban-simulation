@@ -44,6 +44,7 @@ double calculate_prob(Automata*, Cell);
 int* divide_automato(Automata*, int, int*, double, double);
 void free_automata(Automata*);
 void printVetor(char*,int*,int);
+void printVetorDouble(char*, double*, int);
 int linha_inicial(int, int*);
 int linha_final(int, int*);
 double numerador(double, double);
@@ -64,7 +65,7 @@ int main(void){
     const int qtdThreads = 3;
     int* indices = (int*)malloc((qtdThreads)*sizeof(int));
 
-    indices = divide_automato(automata, qtdThreads, indices, 0.2, 0.8);
+    indices = divide_automato(automata, qtdThreads, indices, 0.000127, 0.003674);
     printVetor("indices", indices, qtdThreads);
 
     puts("===Before===");
@@ -137,7 +138,10 @@ int* divide_automato(Automata* automato, int qtd, int* indices, double time_uv, 
         sum += linhas[i];
     }
 
-    int workForLine = sum / qtd; // A conta será truncada.
+    double workForLine = sum / qtd;
+    // printVetorDouble("tempo de cada linha", linhas, ordem);
+    // printf("Workflow = %lf\n", workForLine);
+    // printf("total = %lf\n", sum);
     for (size_t ind = 0, i = 0; ind < qtd; ind++)
     {
         double sumLine = 0.0;
@@ -307,6 +311,15 @@ void printVetor(char* str,int* vetor, int size) {
     for (size_t i = 0; i < size; i++)
     {
         printf("%d ", vetor[i]);
+    }
+    printf("\n");
+}
+
+void printVetorDouble(char* str, double* vetor, int size) {
+    printf("%s = ", str);
+    for (size_t i = 0; i < size; i++)
+    {
+        printf("%.6lf ", vetor[i]);
     }
     printf("\n");
 }
