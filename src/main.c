@@ -3,6 +3,9 @@
 #include <time.h>
 #include <omp.h>
 #include <string.h>
+#include <math.h>
+
+// COMPILACAO: gcc -fopenmp main.c -lm
 
 #define QTD_GIS 5
 #define NELEMS(x)  (sizeof(x) / sizeof((x)[0]))
@@ -10,9 +13,10 @@
 struct CELL
 {
     int isUrban; // Estado da celula
-    int isUnavailable; // pode mudar de estado?
+    int isAvailable; // pode mudar de estado?
     double probTransicao; // probabilidade de transição
     double gis[QTD_GIS]; // Valores GIS desta celula
+    double pesos[QTD_GIS]; // pesos para cada valor gis
     int qtdGis; // talvez precisemos para fazer o calculo
     int pos_i;
     int pos_j;
@@ -22,6 +26,10 @@ struct AUTOMATA{
     Cell* cells;
     int width;
     int height;
+
+    double ligma; // usada para o calculo de transicao
+    double alpha; // usada para o calculo de transicao
+    int neighborhoodSize;
 }typedef Automata;
 
 Automata* create_automata(int, int);
@@ -31,12 +39,18 @@ int* list_of_neighbors(Automata*, int, int, int, int*);
 void print_automata(Automata*);
 // void simulate_automata(Automata*, size_t);
 void simulate_automata(Automata*, Automata*, double, int, int*);
-double calculate_prob(Cell cell);
+// double calculate_prob(Cell cell);
+double calculate_prob(Automata*, Cell);
 int* divide_automato(Automata*, int, int*, double, double);
 void free_automata(Automata*);
 void printVetor(char*,int*,int);
 int linha_inicial(int, int*);
 int linha_final(int, int*);
+double numerador(double, double);
+double denominador(Cell);
+double evaluation_score(double*, double*, int);
+double develop_intensity(Cell*, int*, int);
+double total_constrait();
 int main(void){
     srand(time(NULL));
     int ordem = 10;
@@ -58,10 +72,12 @@ int main(void){
 
     #pragma omp parallel num_threads(qtdThreads)
     {
+        int thId = omp_get_thread_num();
+        printf("thread %d fará de %d até %d\n", thId, linha_inicial(thId, indices), linha_final(thId, indices));
         for (size_t i = 0; i < iteracoes; i++)
         {
             #pragma omp barrier
-            simulate_automata(automata, automataAux, trashold, omp_get_thread_num(), indices);
+            simulate_automata(automata, automataAux, trashold, thId, indices);
 
             #pragma omp single
             copy_automata(automataAux, automata);
@@ -107,10 +123,10 @@ int* divide_automato(Automata* automato, int qtd, int* indices, double time_uv, 
         int count_uv = 0, count_av = 0; // quantidade de celulas unVaieble e avaieble
         for (size_t j = 0; j < ordem; j++)
         {
-            if (automato->cells[i*ordem + j].isUnavailable) {
-                count_uv++;
-            } else {
+            if (automato->cells[i*ordem + j].isAvailable) {
                 count_av++;
+            } else {
+                count_uv++;
             }
         }
         linhas[i] = count_uv*time_uv + count_av*time_av;
@@ -147,7 +163,7 @@ Cell* create_random_matrix(int width, int height){
         {
             matriz[i*width + j].isUrban = ((double) rand() / (double) RAND_MAX) < 0.05 ? 1 : 0; // 5% de chance da celula já ser urbanizada
             matriz[i*width + j].qtdGis = QTD_GIS;
-            matriz[i*width + j].isUnavailable = ((double) rand() / (double) RAND_MAX) < 0.20 ? 1 : 0; // 20% de chance da celula ser imutável
+            matriz[i*width + j].isAvailable = ((double) rand() / (double) RAND_MAX) >= 0.20 ? 1 : 0; // 20% de chance da celula ser imutável
             matriz[i*width + j].probTransicao = (double) rand() / (double) RAND_MAX; // entre 0 e 1
             matriz[i*width + j].pos_i = i;
             matriz[i*width + j].pos_j = j;
@@ -155,6 +171,7 @@ Cell* create_random_matrix(int width, int height){
             for (size_t k = 0; k < QTD_GIS; k++)
             {
                 matriz[i*width + j].gis[k] = rand() % 5 + 1; // [0, 5]
+                matriz[i*width + j].pesos[k] = ((double) rand() / (double) RAND_MAX) + 1; // [1.0, 2.0]
             }
             
         }   
@@ -176,6 +193,9 @@ Automata* create_automata(int width, int height){
     Automata* automata = malloc(sizeof(Automata));
     automata->width = width;
     automata->height = height;
+    automata->ligma = 10.0;
+    automata->alpha = 1.0;
+    automata->neighborhoodSize = 1;
     automata->cells = create_random_matrix(width, height);
     return automata;
 }
@@ -184,12 +204,17 @@ void copy_automata(Automata* autoA, Automata* autoB) {
     // Automata* newAutomato = malloc(sizeof(Automata));
     autoA->width = autoB->width;
     autoA->height = autoB->height;
+    autoA->ligma = autoB->ligma;
+    autoA->alpha = autoB->alpha;
+    autoA->neighborhoodSize = autoB->neighborhoodSize;
     for (size_t i = 0; i < autoB->width * autoB->height; i++)
     {
         autoA->cells[i] = autoB->cells[i];
     }
 }
 
+// n_neighbors retorna q quantidade de vizinhos
+// final_array retorna os indices vizinhos de automata
 int* list_of_neighbors(Automata* automata, int pos_i, int pos_j, int neighborhood_size, int* n_neighbors){
     int m_size = (neighborhood_size * 2) +1;
     int* temp_array = malloc(sizeof(int) * m_size * m_size);
@@ -220,15 +245,12 @@ Cell calculate_cell(Cell cell){
     return cell;
 }
 
-double calculate_prob(Cell cell) {
-    // conta ficticia so para testes
-    double sum = 0.0;
-    for (int i = 0; i < cell.qtdGis; i++)
-    {
-        sum += cell.gis[i];
-    }
-    
-    return (cell.probTransicao + sum) / 100;
+double calculate_prob(Automata* automato, Cell cell) {
+    int size = 0;
+    int* vizinhos = list_of_neighbors(automato, cell.pos_i, cell.pos_j, automato->neighborhoodSize, &size);
+    double prob = numerador(automato->ligma, automato->alpha) / denominador(cell) * develop_intensity(automato->cells, vizinhos, size) * total_constrait();
+    free(vizinhos);
+    return prob;
 }
 
 // void simulate_automata(Automata* automata, size_t n_iterations){
@@ -242,18 +264,17 @@ double calculate_prob(Cell cell) {
 // }
 
 void simulate_automata(Automata* automataAux, Automata* automata, double trashold, int thId, int* indices){
-    // int width = automata->width;
     int height = automata->height;
-
-    printf("----------------------------------------\n");
-    printf("thread %d fará de %d até %d\n", thId, linha_inicial(thId, indices), linha_final(thId, indices));
 
     for(int i = linha_inicial(thId, indices); i < linha_final(thId, indices); i++){
         for(int j = 0; j < height; j++){
-            automataAux->cells[i*automataAux->width + j].probTransicao = calculate_prob(automata->cells[i*automata->width + j]); //calculate_cell(automata->cells[i*automata->width + j]);
+            // automataAux->cells[i*automataAux->width + j].probTransicao = calculate_prob(automata->cells[i*automata->width + j]); 
             
-            automataAux->cells[i*automataAux->width + j].isUrban = automataAux->cells[i*automataAux->width + j].probTransicao < trashold
-                ? 1 : 0;
+            if (automata->cells[i*automataAux->width + j].isAvailable) {
+                automataAux->cells[i*automataAux->width + j].probTransicao = calculate_prob(automata, automata->cells[i*automataAux->width + j]);
+                automataAux->cells[i*automataAux->width + j].isUrban = automataAux->cells[i*automataAux->width + j].probTransicao >= trashold
+                    ? 1 : 0;
+            }
         }
     }
     
@@ -269,7 +290,7 @@ void print_automata(Automata* automata){
                 i,
                 j,
                 curr_cell.isUrban,
-                curr_cell.isUnavailable,
+                curr_cell.isAvailable,
                 curr_cell.probTransicao);
 
             for (size_t k = 0; k < QTD_GIS; k++)
@@ -300,4 +321,35 @@ int linha_inicial(int thId, int* indices) {
 
 int linha_final(int thId, int* indices) {
     return indices[thId];
+}
+
+double numerador(double ligma, double alpha) {
+    return 1.0 + pow(-log(ligma), alpha);
+}
+
+double denominador(Cell cell) {
+    double r = evaluation_score(cell.gis, cell.pesos, cell.qtdGis);
+    return 1.0 + exp(-r);
+}
+
+double evaluation_score(double* gis, double* pesos, int size) {
+    double sum = 0.0;
+    for (size_t i = 0; i < size; i++)
+    {
+        sum += gis[i]*pesos[i];
+    }
+    return sum;
+}
+
+double develop_intensity(Cell* matriz, int* vizinhos, int size) {
+    double sum = 0.0;
+    for (size_t i = 0; i < size; i++)
+    {
+        sum += matriz[vizinhos[i]].probTransicao;
+    }
+    return sum / size;
+}
+
+double total_constrait() {
+    return 1.0; // ainda nao sabemos o que e...
 }
