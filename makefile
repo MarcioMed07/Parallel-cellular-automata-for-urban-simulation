@@ -6,7 +6,7 @@ install:
 #build an execultable named main in folder build/ from main.c in folder src/
 build:
 	mkdir -p .build;\
-	gcc src/main.c  -g -o  .build/main -fopenmp;
+	gcc src/main.c  -g -o  .build/main -fopenmp -lm;
 
 #cleans build folder
 clear:
