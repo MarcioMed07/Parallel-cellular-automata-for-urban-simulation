@@ -7,6 +7,7 @@
 #define QTD_GIS 5
 #define NELEMS(x)  (sizeof(x) / sizeof((x)[0]))
 
+
 struct CELL
 {
     int isUrban; // Estado da celula
@@ -31,7 +32,7 @@ struct AUTOMATA{
 
 
 Cell* create_random_matrix(int width, int height){
-    Cell* matriz = malloc(width*height*sizeof(Cell));
+    Cell* matriz = malloc((size_t)width*height*sizeof(Cell));
     
     for (size_t i = 0; i < width; i++)
     {
@@ -94,19 +95,24 @@ void print_automata(Automata* automata){
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     srand(time(NULL));
-    int ordem = 10;
+    
+    int ordem = atoi(argv[1]);
+    
     int x = ordem, y = ordem;
     Automata* automata = create_automata(x,y);
 
-    print_automata(automata);   
+    // print_automata(automata);   
 
-    FILE* f = fopen("automato_10.bin", "wb");
+    FILE* f = fopen64(argv[2], "wb");
 
     fwrite(&automata->width, sizeof(int), 1, f);
     fwrite(&automata->height, sizeof(int), 1, f);
-    fwrite(automata->cells, automata->width*automata->height*sizeof(automata->cells), 1, f);
+    fwrite(&automata->ligma, sizeof(double), 1, f);
+    fwrite(&automata->alpha, sizeof(double), 1, f);
+    fwrite(&automata->neighborhoodSize, sizeof(int), 1, f);
+    fwrite(automata->cells, (size_t) automata->width*automata->height*sizeof(Cell), 1, f);
 
     fclose(f);
     free_automata(automata);

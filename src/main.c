@@ -32,6 +32,7 @@ struct AUTOMATA{
     int neighborhoodSize;
 }typedef Automata;
 
+Automata* read_from_file(FILE *f);
 Automata* create_automata(int, int);
 void copy_automata(Automata*, Automata*);
 Automata* allocate(int, int);
@@ -52,42 +53,48 @@ double denominador(Cell);
 double evaluation_score(double*, double*, int);
 double develop_intensity(Cell*, int*, int);
 double total_constrait();
-int main(void){
+int main(int argc, char *argv[]){
     srand(time(NULL));
-    int ordem = 10;
-    int x = ordem, y = ordem;
-    int iteracoes = 10;
+    // int ordem = 10;
+    // int x = ordem, y = ordem;
+    int iteracoes = atoi(argv[1]);
     double trashold = 0.30;
-    Automata* automata = create_automata(x,y);
-    Automata* automataAux = allocate(x, y);
+    // Automata* automata = create_automata(x,y);
+    FILE* ptr;
+    ptr = fopen(argv[3],"rb");
+    if(ptr == NULL){
+        printf("Cant read file");
+        return 1;
+    }
+    Automata* automata = read_from_file(ptr);
+    Automata* automataAux = allocate(automata->width, automata->height);
     copy_automata(automataAux, automata); // A = B
 
-    const int qtdThreads = 3;
+    const int qtdThreads = atoi(argv[2]);
     int* indices = (int*)malloc((qtdThreads)*sizeof(int));
 
     indices = divide_automato(automata, qtdThreads, indices, 0.000127, 0.003674);
-    printVetor("indices", indices, qtdThreads);
+    // printVetor("indices", indices, qtdThreads);
 
-    puts("===Before===");
-    print_automata(automata);
+    // puts("===Before===");
+    // print_automata(automata);
 
     #pragma omp parallel num_threads(qtdThreads)
     {
         int thId = omp_get_thread_num();
-        printf("thread %d fará de %d até %d\n", thId, linha_inicial(thId, indices), linha_final(thId, indices));
+        // printf("thread %d fará de %d até %d\n", thId, linha_inicial(thId, indices), linha_final(thId, indices));
         for (size_t i = 0; i < iteracoes; i++)
         {
-            #pragma omp barrier
             simulate_automata(automata, automataAux, trashold, thId, indices);
-
+            #pragma omp barrier
             #pragma omp single
             copy_automata(automataAux, automata);
 
             #pragma omp barrier
         }
     }
-    puts("===After===");
-    print_automata(automata);
+    // puts("===After===");
+    // print_automata(automata);
     
     // int th_id, nthreads, flag = -1;
     // #pragma omp parallel private(th_id)
@@ -106,6 +113,22 @@ int main(void){
     free_automata(automata);
     free_automata(automataAux);
     return 0;
+}
+
+Automata* read_from_file(FILE *f){
+    size_t width = 0;
+    size_t height = 0;
+    fread(&width, sizeof(int), 1, f);
+    fread(&height, sizeof(int), 1, f);
+    Automata* automata = allocate(width, height);
+    automata->width = width;
+    automata->height = height;
+    fread(&automata->ligma, sizeof(double), 1, f);
+    fread(&automata->alpha, sizeof(double), 1, f);
+    fread(&automata->neighborhoodSize, sizeof(int), 1, f);
+    fread(automata->cells,(size_t)automata->width*automata->height*sizeof(Cell), 1, f);
+    fclose(f);
+    return automata;
 }
 
 /**
@@ -185,7 +208,8 @@ Cell* create_random_matrix(int width, int height){
 
 Automata* allocate(int width, int height) {
     Automata* automata = malloc(sizeof(Automata));
-    automata->cells = malloc(width*height*sizeof(Cell));
+    automata->cells = malloc((size_t)width*height*sizeof(Cell));
+    return automata;
 }
 
 void free_automata(Automata* automato) {
